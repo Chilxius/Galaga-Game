@@ -11,7 +11,7 @@
 ************************************
 *                                  *
 * All the classes are here in one  *
-* file, but could be moved into    *
+* file, but could be moved into    *  
 * different tabs.                  *
 *                                  *
 ************************************
@@ -32,15 +32,20 @@ ArrayList<Segment> segments = new ArrayList<Segment>(); //only used for Centiped
 
 //Projectile Data
 ArrayList<Shot> shots = new ArrayList<Shot>();
+ArrayList<Missile> missiles = new ArrayList<Missile>();
 
 //Wave Data
-int waveSize = 10;
+int waveSize = 10;  //Size of first wave
 float nextFighter = 1000; //must be float to divide correctly
 int waveStraights = waveSize, waveSwoops = waveSize; //number of straight/swooping fighters per wave
 boolean waveFinished;
 
 //Image Data
-PImage enemyPics[] = new PImage[3];
+PImage enemyPics[] = new PImage[4];
+
+//Background Data
+int starCount = 10;
+float [][][] starPos = new float[3][2][starCount];
 
 void setup()
 {
@@ -51,13 +56,14 @@ void setup()
   player = new Player();
   
   loadImages();
+  letThereBeLight();
   
   //spawnTestWave();
 }
 
 void draw()
 {
-  background(0);
+  drawBackground();
   
   launchWaves();
   
@@ -81,6 +87,10 @@ void keyPressed()
   //Attacks
   if( key == ' ' || key == 'z' || key == 'Z' )
     player.shooting = true;
+    
+  //TESTING
+  if( key == 'm' )
+    missiles.add( new Missile( enemies.get(0), player ) );
 }
 
 void keyReleased()
@@ -91,6 +101,36 @@ void keyReleased()
     player.movingRight = false;
   if( key == ' ' || key == 'z' || key == 'Z' )
     player.shooting = false;
+}
+
+//Draws starry sky
+void drawBackground()
+{
+  background(0);
+  
+  //Draw stars in different "layers", with
+  //closer stars being bigger and faster
+  fill(255,255,150);
+  for( int i = 0; i < starCount; i++ )
+  {
+    //Closest stars
+    circle(starPos[0][0][i],starPos[0][1][i],3);
+    starPos[0][1][i]+=1.2;
+    //Middle stars
+    circle(starPos[1][0][i],starPos[1][1][i],2);
+    starPos[1][1][i]+=0.8;
+    //Farthest stars
+    circle(starPos[2][0][i],starPos[2][1][i],1);
+    starPos[2][1][i]+=0.5;
+    
+    //Reset stars
+    for( int j = 0; j < 3; j++ )
+      if( starPos[j][1][i] > height+3 )
+      {
+        starPos[j][0][i] = random(width);
+        starPos[j][1][i] = -3;
+      }
+  }
 }
 
 //Deal with player and HUD
@@ -141,6 +181,9 @@ void handleShots()
       player.takeDamage();
     }
   }
+  
+  for( Missile m: missiles )
+    m.moveAndDraw();
 }
 
 //Remove items from lists when done
@@ -209,10 +252,26 @@ void launchWaves()
   
 public void loadImages()
 {
-  enemyPics[0] = loadImage("cobra.png");  enemyPics[0].resize(50,0);
-  enemyPics[1] = loadImage("jaguar.png"); enemyPics[1].resize(50,0);
+  enemyPics[0] = loadImage("cobra.png");   enemyPics[0].resize(50,0);
+  enemyPics[1] = loadImage("jaguar.png");  enemyPics[1].resize(100,0);
+  enemyPics[2] = loadImage("sparrow.png"); enemyPics[2].resize(50,0);
+  enemyPics[3] = loadImage("jaguar.png");  enemyPics[3].resize(30,0);
 }
 
+//Creates the stars
+public void letThereBeLight()
+{
+  //Array level 1: layers of stars, for a parallax effect
+  //Array level 2: x or y position of star
+  //Array level 3: value of that position
+  //Ex: starPos[1][1][40] -> the 41st y position in the second layer
+  for( int i = 0; i < starPos.length; i++ )
+    for( int j = 0; j < starPos[0][0].length; j++ )
+    {
+      starPos[i][0][j] = random(width);
+      starPos[i][1][j] = random(height);
+    }
+}
 
 //*********************** PLAYER ***********************//
 //This class will contain the data for the player's ship//
@@ -234,7 +293,7 @@ class Player extends MovingThing
   //Weapon data
   int nextShot; //when next shot can fire
   int shotDelay; //time between shots
-  int shotFork = 3; //how many shots per shot
+  int shotFork = 1; //how many shots per shot
   
   public Player()
   {
@@ -278,9 +337,9 @@ class Player extends MovingThing
     applyFriction( 5 );
     
     //Draw
-    //fill(200);
-    //circle(xPos,yPos,size); //temporary
-    image(playerImage,xPos,yPos);
+    fill(200);
+    circle(xPos,yPos,size); //temporary
+    //image(playerImage,xPos,yPos);
     
     //Shield
     if( shielded )
@@ -387,6 +446,8 @@ class Enemy extends MovingThing
   int type; //this will determine appearance and behavior
   float swoopAngle; //only used for swoopers
   
+  float rotation;
+  
   int nextShot;
   
   public Enemy( int t, int sequence, int groupSize )
@@ -435,10 +496,14 @@ class Enemy extends MovingThing
     if( millis() >= nextShot )
     {
       nextShot = millis()+3000;
-      shots.add( new Shot( this, false ) );
+      if( type != 4 )
+        shots.add( new Shot( this, false ) );
       if( type == 4 )
-        for( Segment s: segments )
-          shots.add( new Shot( s, false ) );
+      {
+        missiles.add( new Missile( this, player ) );
+        for( int i = 0; i < segments.size(); i+=5 )
+          missiles.add( new Missile( segments.get(i), player ) );
+      }
     }
     
     //Draw segments for centipedes
@@ -449,12 +514,16 @@ class Enemy extends MovingThing
         segments.get(i).drawSegment(false);
     
     //Draw (TEMP COLORS)
-    if( type == 1 ) image( enemyPics[1], xPos, yPos );
-    if( type == 2 || type == 3 ) image( enemyPics[0], xPos, yPos );
+    if( type == 1 ) image( enemyPics[0], xPos, yPos );
+    if( type == 2 || type == 3 ) image( enemyPics[2], xPos, yPos );
     if( type == 4 )
     {
-      fill(200,0,0);
-      circle(xPos,yPos,size);
+      push();
+      translate(xPos,yPos);
+      rotation = atan2( player.yPos-yPos, player.xPos-xPos );
+      rotate(rotation-HALF_PI);
+      image( enemyPics[1], 0, 0 );
+      pop();
     }
     
     //Flicker yellow if about to shoot    
@@ -500,7 +569,7 @@ class Enemy extends MovingThing
       case 1: //Fly straight forward
         xPos = width / (max+1) * ( current+1);
         xSpd = 0;
-        yPos = -height;
+        yPos = -height/3;
         ySpd = 3;
         acceleration = enemySpeed;
         size = 50;
@@ -604,6 +673,49 @@ class Segment extends MovingThing
   }
 }
 
+//*********************** MISSILE **************************//
+//This will control the seeker missiles. Each missile will  //
+//be given a target when created, and will only register a  //
+//hit against that target. They will seek only for a short  //
+//while, not forever.                                       //
+
+class Missile extends MovingThing
+{
+  MovingThing target;
+  float rotation;
+  int seekTime;
+  
+  public Missile( MovingThing origin, MovingThing t )
+  {
+    target = t;
+    xPos = origin.xPos;
+    yPos = origin.yPos;
+    acceleration = 0.1;
+    seekTime = waveSize*10;
+  }
+  
+  public void moveAndDraw()
+  {
+    move();
+    if(seekTime > 0)
+    {
+      if( target.xPos > xPos ) xSpd += acceleration;
+      if( target.xPos < xPos ) xSpd -= acceleration;
+      if( target.yPos > yPos ) ySpd += acceleration;
+      if( target.yPos < yPos ) ySpd -= acceleration;
+
+      seekTime--;
+    }
+    
+    
+    rotation = atan2( target.yPos-yPos, target.xPos-xPos ) - HALF_PI;
+    push();
+    translate(xPos,yPos);
+    rotate(rotation);
+    image( enemyPics[3], 0, 0 );
+    pop();
+  }
+}
 
 //*********************** MOVING THING *************************//
 //This is an ABSTRACT CLASS. It can't be used to create objects.//
